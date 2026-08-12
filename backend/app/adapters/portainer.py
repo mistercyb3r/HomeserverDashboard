@@ -41,8 +41,12 @@ class PortainerAdapter(ServiceAdapter):
             )
 
         try:
+            # Home-lab Portainer almost always uses a self-signed HTTPS cert.
+            # This adapter only checks reachability; Open still goes to the URL.
             async with httpx.AsyncClient(
-                timeout=self._timeout, follow_redirects=True
+                timeout=self._timeout,
+                follow_redirects=True,
+                verify=False,
             ) as client:
                 response = await client.get(self._base_url)
                 online = response.status_code < 500
