@@ -39,9 +39,16 @@ class Settings(BaseSettings):
     # Weather (Open-Meteo — no API key). Does not affect system health.
     weather_enabled: bool = Field(default=True)
     weather_location: str = Field(default="Thetford, Norfolk, UK")
-    weather_latitude: float | None = Field(default=None)
-    weather_longitude: float | None = Field(default=None)
+    # Defaults are Thetford, Norfolk — avoids geocoding failures in Docker.
+    weather_latitude: float | None = Field(default=52.4133)
+    weather_longitude: float | None = Field(default=0.7510)
     weather_cache_seconds: int = Field(default=600, ge=60, le=3600)
+
+    # Tailscale local API socket (read-only status).
+    tailscale_socket: str | None = Field(default="/var/run/tailscale/tailscaled.sock")
+    tailscale_admin_url: str | None = Field(
+        default="https://login.tailscale.com/admin/machines"
+    )
 
     http_timeout_seconds: float = Field(default=5.0)
 
@@ -53,6 +60,8 @@ class Settings(BaseSettings):
         "docker_socket",
         "host_fs_root",
         "host_sys_root",
+        "tailscale_socket",
+        "tailscale_admin_url",
         mode="before",
     )
     @classmethod

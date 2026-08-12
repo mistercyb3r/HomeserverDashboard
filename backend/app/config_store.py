@@ -20,8 +20,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "starpulse": {"enabled": True, "url": None, "socket": None},
         "starlink": {"enabled": True, "url": None, "socket": None},
         "docker": {"enabled": True, "url": None, "socket": DEFAULT_SOCKET},
-        # Future adapters — listed for settings UI, not implemented yet.
         "portainer": {"enabled": True, "url": None, "socket": None},
+        "tailscale": {
+            "enabled": True,
+            "url": None,
+            "socket": "/var/run/tailscale/tailscaled.sock",
+        },
+        # Future adapters — listed for settings UI, not implemented yet.
         "transmission": {"enabled": False, "url": None, "socket": None},
         "homeassistant": {"enabled": False, "url": None, "socket": None},
         "plex": {"enabled": False, "url": None, "socket": None},

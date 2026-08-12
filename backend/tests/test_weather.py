@@ -18,6 +18,39 @@ def _clear_cache():
 
 
 @pytest.mark.asyncio
+async def test_weather_thetford_uses_default_coords_without_geocode():
+    forecast = MagicMock()
+    forecast.raise_for_status = MagicMock()
+    forecast.json.return_value = {
+        "current": {
+            "temperature_2m": 18.2,
+            "apparent_temperature": 17.1,
+            "weather_code": 0,
+        },
+        "daily": {
+            "temperature_2m_max": [21.0],
+            "temperature_2m_min": [12.0],
+            "precipitation_probability_max": [20],
+        },
+    }
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+    mock_client.get = AsyncMock(return_value=forecast)
+
+    with patch("app.weather.httpx.AsyncClient", return_value=mock_client):
+        info = await fetch_weather(location="Thetford, Norfolk, UK")
+
+    assert info.available is True
+    assert info.temperature_c == 18.2
+    # Only forecast call — no geocode request.
+    assert mock_client.get.await_count == 1
+    called_url = str(mock_client.get.await_args.args[0])
+    assert "forecast" in called_url
+
+
+@pytest.mark.asyncio
 async def test_weather_unavailable_on_http_error():
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value = mock_client

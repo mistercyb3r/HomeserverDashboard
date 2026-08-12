@@ -54,6 +54,7 @@ _SKIP_MOUNT_PREFIXES = (
     "/dev",
     "/run",
     "/snap",
+    "/boot",  # EFI / boot partitions are not useful cockpit storage
     "/var/lib/docker",
     "/var/lib/containerd",
     "/var/lib/containers",
@@ -68,7 +69,10 @@ _SKIP_EXACT_MOUNTS = {
     "/etc/timezone",
     "/etc/localtime",
     "/data",  # app config volume — same disk as host root when bind-mounted
+    "/boot/efi",
 }
+
+_BOOT_FSTYPES = {"vfat", "fat", "fat32", "msdos", "efi"}
 
 
 def _format_bytes(num: float) -> str:
@@ -140,6 +144,10 @@ def _is_relevant_partition(
     if display.startswith("/etc/") or display == "/etc":
         return False
     if any(display == p or display.startswith(p + "/") for p in _SKIP_MOUNT_PREFIXES):
+        return False
+    if fstype in _BOOT_FSTYPES and (
+        display.startswith("/boot") or "efi" in display.lower()
+    ):
         return False
     if "overlay" in display or "/docker/" in display:
         return False

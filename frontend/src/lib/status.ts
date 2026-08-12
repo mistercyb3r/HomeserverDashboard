@@ -24,6 +24,8 @@ export function emptyStateCopy(serviceId: string, error: string | null): string 
       return "Docker socket has not been enabled.";
     case "portainer":
       return "Add a Portainer URL in Settings to enable this card.";
+    case "tailscale":
+      return "Enable Tailscale and mount the tailscaled socket to show VPN status.";
     default:
       return error || "This service has not been configured yet.";
   }

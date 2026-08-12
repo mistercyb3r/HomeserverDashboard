@@ -8,6 +8,7 @@ from app.adapters.registry import AdapterRegistry, build_registry
 from app.adapters.server import ServerAdapter
 from app.adapters.starlink import StarlinkAdapter
 from app.adapters.starpulse import StarPulseAdapter
+from app.adapters.tailscale import TailscaleAdapter
 
 __all__ = [
     "AdapterRegistry",
@@ -18,5 +19,6 @@ __all__ = [
     "ServiceAdapter",
     "StarPulseAdapter",
     "StarlinkAdapter",
+    "TailscaleAdapter",
     "build_registry",
 ]

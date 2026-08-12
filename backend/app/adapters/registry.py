@@ -12,6 +12,8 @@ from app.adapters.portainer import PortainerAdapter
 from app.adapters.server import ServerAdapter
 from app.adapters.starlink import StarlinkAdapter
 from app.adapters.starpulse import StarPulseAdapter
+from app.adapters.tailscale import DEFAULT_SOCKET as TAILSCALE_DEFAULT_SOCKET
+from app.adapters.tailscale import TailscaleAdapter
 from app.config import Settings
 from app.config_store import ConfigStore
 from app.docker_engine import DEFAULT_SOCKET
@@ -46,6 +48,15 @@ SERVICE_CATALOG: list[ServiceMeta] = [
         "socket",
     ),
     ServiceMeta("portainer", "Portainer", "Container management UI", "layout", True),
+    ServiceMeta(
+        "tailscale",
+        "Tailscale",
+        "Private mesh VPN",
+        "shield",
+        True,
+        True,
+        "socket",
+    ),
     ServiceMeta("transmission", "Transmission", "Torrent client", "download", False),
     ServiceMeta("homeassistant", "Home Assistant", "Home automation", "home", False),
     ServiceMeta("plex", "Plex", "Media server", "play", False),
@@ -102,6 +113,8 @@ class AdapterRegistry:
             socket = entry.get("socket")
             if meta.id == "docker" and not socket:
                 socket = settings.docker_socket or DEFAULT_SOCKET
+            if meta.id == "tailscale" and not socket:
+                socket = settings.tailscale_socket or TAILSCALE_DEFAULT_SOCKET
             has_secret = False
             if meta.id == "jellyfin":
                 has_secret = bool(settings.jellyfin_api_key)
@@ -140,6 +153,14 @@ def _resolve_socket(config: dict[str, Any], settings: Settings) -> str | None:
     return str(socket) if socket else None
 
 
+def _resolve_tailscale_socket(config: dict[str, Any], settings: Settings) -> str | None:
+    entry = (config.get("services") or {}).get("tailscale") or {}
+    socket = (
+        entry.get("socket") or settings.tailscale_socket or TAILSCALE_DEFAULT_SOCKET
+    )
+    return str(socket) if socket else None
+
+
 def build_registry(settings: Settings, store: ConfigStore) -> AdapterRegistry:
     config = store.read()
     jellyfin_url = _resolve_url(config, "jellyfin", settings.jellyfin_url)
@@ -149,6 +170,9 @@ def build_registry(settings: Settings, store: ConfigStore) -> AdapterRegistry:
     docker_entry = (config.get("services") or {}).get("docker") or {}
     docker_enabled = bool(docker_entry.get("enabled", False))
     docker_socket = _resolve_socket(config, settings)
+    tailscale_entry = (config.get("services") or {}).get("tailscale") or {}
+    tailscale_enabled = bool(tailscale_entry.get("enabled", True))
+    tailscale_socket = _resolve_tailscale_socket(config, settings)
 
     adapters: dict[str, ServiceAdapter] = {
         "server": ServerAdapter(),
@@ -173,6 +197,12 @@ def build_registry(settings: Settings, store: ConfigStore) -> AdapterRegistry:
         "portainer": PortainerAdapter(
             base_url=portainer_url,
             timeout=settings.http_timeout_seconds,
+        ),
+        "tailscale": TailscaleAdapter(
+            enabled=tailscale_enabled,
+            socket_path=tailscale_socket,
+            timeout=settings.http_timeout_seconds,
+            admin_url=settings.tailscale_admin_url,
         ),
     }
     return AdapterRegistry(adapters, SERVICE_CATALOG)

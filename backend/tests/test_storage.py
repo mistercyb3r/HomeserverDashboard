@@ -8,6 +8,26 @@ from unittest.mock import patch
 from app.storage import _is_relevant_partition, collect_storage_mounts
 
 
+def test_skips_boot_efi():
+    with patch("app.storage.os.path.isdir", return_value=True):
+        assert not _is_relevant_partition(
+            SimpleNamespace(
+                mountpoint="/boot/efi",
+                fstype="vfat",
+                device="/dev/sda1",
+                opts="rw",
+            )
+        )
+        assert not _is_relevant_partition(
+            SimpleNamespace(
+                mountpoint="/boot",
+                fstype="ext4",
+                device="/dev/sda2",
+                opts="rw",
+            )
+        )
+
+
 def test_skips_pseudo_and_docker_mounts():
     assert not _is_relevant_partition(
         SimpleNamespace(mountpoint="/proc", fstype="proc", device="proc", opts="")

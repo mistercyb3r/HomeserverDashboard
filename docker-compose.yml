@@ -17,17 +17,20 @@ services:
       HOST_SYS_ROOT: ${HOST_SYS_ROOT:-/sys}
       WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
       WEATHER_LOCATION: ${WEATHER_LOCATION:-Thetford, Norfolk, UK}
-      WEATHER_LATITUDE: ${WEATHER_LATITUDE:-}
-      WEATHER_LONGITUDE: ${WEATHER_LONGITUDE:-}
+      WEATHER_LATITUDE: ${WEATHER_LATITUDE:-52.4133}
+      WEATHER_LONGITUDE: ${WEATHER_LONGITUDE:-0.7510}
       WEATHER_CACHE_SECONDS: ${WEATHER_CACHE_SECONDS:-600}
+      TAILSCALE_SOCKET: ${TAILSCALE_SOCKET:-/var/run/tailscale/tailscaled.sock}
+      TAILSCALE_ADMIN_URL: ${TAILSCALE_ADMIN_URL:-https://login.tailscale.com/admin/machines}
     volumes:
       - ./data:/data
       # Host root (read-only) so Storage shows real disks, not container binds.
-      # Avoid rslave — it breaks compose up on some hosts.
       - /:/hostfs:ro
       # Temperature sensors (best-effort).
       - /sys/class/hwmon:/sys/class/hwmon:ro
       - /sys/class/thermal:/sys/class/thermal:ro
+      # Tailscale local status API (read-only). Requires Tailscale on the host.
+      - /var/run/tailscale:/var/run/tailscale:ro
       # Optional: enable Docker monitoring (read-only mount still grants broad control).
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
     restart: unless-stopped

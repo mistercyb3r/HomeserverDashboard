@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from threading import Lock
 from typing import Any
@@ -35,6 +36,10 @@ _WMO: dict[int, tuple[str, str]] = {
     99: ("Thunderstorm", "⛈"),
 }
 
+# Stable fallback for the default home location (skips flaky geocoding).
+_THETFORD = (52.4133, 0.7510)
+_DEFAULT_LOCATION = "Thetford, Norfolk, UK"
+
 _lock = Lock()
 _cache: dict[str, Any] = {"expires_at": 0.0, "payload": None, "key": None}
 
@@ -59,27 +64,57 @@ def _wmo_label(code: int | None) -> tuple[str | None, str | None]:
     return entry[0], entry[1]
 
 
+def _default_coords_for(location: str) -> tuple[float, float] | None:
+    normalized = re.sub(r"\s+", " ", location.strip().lower())
+    if "thetford" in normalized:
+        return _THETFORD
+    return None
+
+
 async def _geocode(
     client: httpx.AsyncClient, location: str
 ) -> tuple[float, float, str] | None:
-    response = await client.get(
-        "https://geocoding-api.open-meteo.com/v1/search",
-        params={"name": location, "count": 1, "language": "en", "format": "json"},
-    )
-    response.raise_for_status()
-    results = (response.json() or {}).get("results") or []
-    if not results:
-        return None
-    row = results[0]
-    lat = float(row["latitude"])
-    lon = float(row["longitude"])
-    parts = [
-        str(row.get("name") or "").strip(),
-        str(row.get("admin1") or "").strip(),
-        str(row.get("country_code") or row.get("country") or "").strip(),
+    # Prefer the city token — "Thetford, Norfolk, UK" often returns empty.
+    city = location.split(",")[0].strip() or location
+    attempts = [
+        {
+            "name": city,
+            "count": 5,
+            "language": "en",
+            "format": "json",
+            "countryCode": "GB",
+        },
+        {"name": city, "count": 5, "language": "en", "format": "json"},
+        {"name": location, "count": 5, "language": "en", "format": "json"},
     ]
-    label = ", ".join(p for p in parts if p) or location
-    return lat, lon, label
+    for params in attempts:
+        response = await client.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params=params,
+        )
+        response.raise_for_status()
+        results = (response.json() or {}).get("results") or []
+        if not results:
+            continue
+        # Prefer UK / Norfolk matches when present.
+        preferred = None
+        for row in results:
+            admin = str(row.get("admin1") or "").lower()
+            country = str(row.get("country_code") or "").upper()
+            if "norfolk" in admin or country == "GB":
+                preferred = row
+                break
+        row = preferred or results[0]
+        lat = float(row["latitude"])
+        lon = float(row["longitude"])
+        parts = [
+            str(row.get("name") or "").strip(),
+            str(row.get("admin1") or "").strip(),
+            str(row.get("country_code") or row.get("country") or "").strip(),
+        ]
+        label = ", ".join(p for p in parts if p) or location
+        return lat, lon, label
+    return None
 
 
 async def fetch_weather(
@@ -88,13 +123,11 @@ async def fetch_weather(
     latitude: float | None = None,
     longitude: float | None = None,
     cache_seconds: int = 600,
-    timeout: float = 5.0,
+    timeout: float = 8.0,
     enabled: bool = True,
 ) -> WeatherInfo:
     """Return cached or fresh weather. Never raises."""
-    display_location = (location or "Thetford, Norfolk, UK").strip() or (
-        "Thetford, Norfolk, UK"
-    )
+    display_location = (location or _DEFAULT_LOCATION).strip() or _DEFAULT_LOCATION
     if not enabled:
         return _unavailable(display_location, "Weather disabled")
 
@@ -108,16 +141,21 @@ async def fetch_weather(
         ):
             return _cache["payload"]
 
+    resolved_label = display_location
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             lat = latitude
             lon = longitude
-            resolved_label = display_location
             if lat is None or lon is None:
-                geo = await _geocode(client, display_location)
-                if geo is None:
-                    return _unavailable(display_location, "Location not found")
-                lat, lon, resolved_label = geo
+                defaults = _default_coords_for(display_location)
+                if defaults is not None:
+                    lat, lon = defaults
+                    resolved_label = display_location
+                else:
+                    geo = await _geocode(client, display_location)
+                    if geo is None:
+                        return _unavailable(display_location, "Location not found")
+                    lat, lon, resolved_label = geo
 
             response = await client.get(
                 "https://api.open-meteo.com/v1/forecast",
@@ -130,13 +168,13 @@ async def fetch_weather(
                         "precipitation_probability_max"
                     ),
                     "forecast_days": 1,
-                    "timezone": "auto",
+                    "timezone": "Europe/London",
                 },
             )
             response.raise_for_status()
             payload = response.json() or {}
-    except Exception as exc:  # noqa: BLE001
-        return _unavailable(display_location, str(exc) or "Weather unavailable")
+    except Exception:  # noqa: BLE001 - keep UI clean; never leak stack/host errors
+        return _unavailable(display_location, "Weather unavailable")
 
     current = payload.get("current") or {}
     daily = payload.get("daily") or {}

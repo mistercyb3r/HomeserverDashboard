@@ -16,7 +16,7 @@ def test_health(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["version"] == "1.1.1"
+    assert response.json()["version"] == "1.2.0"
 
 
 def test_dashboard_includes_server(client):
@@ -40,7 +40,7 @@ def test_dashboard_includes_server(client):
             assert m["display"] in {"Unavailable", "Not configured", "Not available"}
     assert "weather" in payload
     assert "quick_links" in payload
-    assert payload.get("app_version") == "1.1.1"
+    assert payload.get("app_version") == "1.2.0"
     overview_keys = [m["key"] for m in payload["overview"]]
     assert "cpu" in overview_keys
     assert "ram" in overview_keys
@@ -61,6 +61,8 @@ def test_dashboard_includes_server(client):
             "/etc/hosts",
             "/etc/resolv.conf",
             "/data",
+            "/boot/efi",
+            "/boot",
         }
 
 
@@ -72,12 +74,16 @@ def test_settings_lists_future_services(client):
     assert "jellyfin" in ids
     assert "docker" in ids
     assert "portainer" in ids
+    assert "tailscale" in ids
     assert "immich" in ids
     docker = next(s for s in payload["services"] if s["id"] == "docker")
     assert docker["implemented"] is True
     assert docker["config_kind"] == "socket"
     portainer = next(s for s in payload["services"] if s["id"] == "portainer")
     assert portainer["implemented"] is True
+    tailscale = next(s for s in payload["services"] if s["id"] == "tailscale")
+    assert tailscale["implemented"] is True
+    assert tailscale["config_kind"] == "socket"
     immich = next(s for s in payload["services"] if s["id"] == "immich")
     assert immich["implemented"] is False
     assert immich["enabled"] is False
