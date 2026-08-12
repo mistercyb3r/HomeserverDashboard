@@ -9,6 +9,7 @@ from app.adapters.base import ServiceAdapter
 from app.adapters.docker import DockerAdapter
 from app.adapters.jellyfin import JellyfinAdapter
 from app.adapters.portainer import PortainerAdapter
+from app.adapters.router import RouterAdapter
 from app.adapters.server import ServerAdapter
 from app.adapters.starlink import StarlinkAdapter
 from app.adapters.starpulse import StarPulseAdapter
@@ -48,6 +49,7 @@ SERVICE_CATALOG: list[ServiceMeta] = [
         "socket",
     ),
     ServiceMeta("portainer", "Portainer", "Container management UI", "layout", True),
+    ServiceMeta("router", "Router", "TP-Link Archer AX73", "router", True),
     ServiceMeta(
         "tailscale",
         "Tailscale",
@@ -118,6 +120,8 @@ class AdapterRegistry:
             has_secret = False
             if meta.id == "jellyfin":
                 has_secret = bool(settings.jellyfin_api_key)
+            if meta.id == "router":
+                has_secret = bool(settings.tplink_password)
             defs.append(
                 ServiceDefinition(
                     id=meta.id,
@@ -167,6 +171,7 @@ def build_registry(settings: Settings, store: ConfigStore) -> AdapterRegistry:
     starpulse_url = _resolve_url(config, "starpulse", settings.starpulse_url)
     starlink_source = _resolve_url(config, "starlink", starpulse_url)
     portainer_url = _resolve_url(config, "portainer", settings.portainer_url)
+    router_url = _resolve_url(config, "router", settings.tplink_url)
     docker_entry = (config.get("services") or {}).get("docker") or {}
     docker_enabled = bool(docker_entry.get("enabled", False))
     docker_socket = _resolve_socket(config, settings)
@@ -197,6 +202,13 @@ def build_registry(settings: Settings, store: ConfigStore) -> AdapterRegistry:
         "portainer": PortainerAdapter(
             base_url=portainer_url,
             timeout=settings.http_timeout_seconds,
+        ),
+        "router": RouterAdapter(
+            base_url=router_url,
+            password=settings.tplink_password,
+            username=settings.tplink_username or "admin",
+            verify_ssl=settings.tplink_verify_ssl,
+            timeout=max(settings.http_timeout_seconds, 12.0),
         ),
         "tailscale": TailscaleAdapter(
             enabled=tailscale_enabled,

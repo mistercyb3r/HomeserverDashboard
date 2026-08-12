@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     portainer_url: str | None = Field(default=None)
     docker_socket: str | None = Field(default=None)
 
+    # TP-Link Archer (local admin password — never returned by the API).
+    tplink_url: str | None = Field(default=None)
+    tplink_username: str = Field(default="admin")
+    tplink_password: str | None = Field(default=None)
+    tplink_verify_ssl: bool = Field(default=False)
+
     # Host filesystem bind inside the container (e.g. /hostfs) for Storage.
     host_fs_root: str | None = Field(default=None)
     # Optional sysfs root for temperatures when /sys is remapped.
@@ -58,6 +64,8 @@ class Settings(BaseSettings):
         "starpulse_url",
         "portainer_url",
         "docker_socket",
+        "tplink_url",
+        "tplink_password",
         "host_fs_root",
         "host_sys_root",
         "tailscale_socket",

@@ -7,3 +7,4 @@ pydantic-settings>=2.6.0
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
 docker>=7.1.0
+tplinkrouterc6u>=5.0.0

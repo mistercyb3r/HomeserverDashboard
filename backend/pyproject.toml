@@ -16,6 +16,7 @@ dependencies = [
   "pydantic>=2.9.0",
   "pydantic-settings>=2.6.0",
   "docker>=7.1.0",
+  "tplinkrouterc6u>=5.0.0",
 ]
 
 [project.optional-dependencies]

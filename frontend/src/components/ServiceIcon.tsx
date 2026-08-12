@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   Radio,
   RefreshCw,
+  Router,
   Server,
   Settings,
   Shield,
@@ -35,6 +36,7 @@ const ICONS: Record<string, LucideIcon> = {
   refresh: RefreshCw,
   chart: ChartColumn,
   settings: Settings,
+  router: Router,
 };
 
 interface ServiceIconProps {

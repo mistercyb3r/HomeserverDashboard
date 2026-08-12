@@ -21,6 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "starlink": {"enabled": True, "url": None, "socket": None},
         "docker": {"enabled": True, "url": None, "socket": DEFAULT_SOCKET},
         "portainer": {"enabled": True, "url": None, "socket": None},
+        "router": {"enabled": True, "url": None, "socket": None},
         "tailscale": {
             "enabled": True,
             "url": None,

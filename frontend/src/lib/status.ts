@@ -24,6 +24,8 @@ export function emptyStateCopy(serviceId: string, error: string | null): string 
       return "Docker socket has not been enabled.";
     case "portainer":
       return "Add a Portainer URL in Settings to enable this card.";
+    case "router":
+      return "Add TPLINK_URL and local TPLINK_PASSWORD in .env (not TP-Link ID).";
     case "tailscale":
       return "Enable Tailscale and mount the tailscaled socket to show VPN status.";
     default:
