@@ -85,6 +85,25 @@ export interface SystemHealth {
   total_enabled: number;
 }
 
+export interface WeatherInfo {
+  available: boolean;
+  location: string;
+  temperature_c: number | null;
+  feels_like_c: number | null;
+  high_c: number | null;
+  low_c: number | null;
+  condition: string | null;
+  icon: string | null;
+  rain_probability: number | null;
+  error: string | null;
+}
+
+export interface QuickLink {
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface DashboardResponse {
   server_name: string;
   generated_at: string;
@@ -94,6 +113,8 @@ export interface DashboardResponse {
   storage: StorageMount[];
   services: ServiceSnapshot[];
   activity: ActivityItem[];
+  weather?: WeatherInfo | null;
+  quick_links?: QuickLink[];
 }
 
 export interface ActivityItem {

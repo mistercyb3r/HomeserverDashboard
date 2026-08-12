@@ -36,13 +36,30 @@ def test_dashboard_includes_server(client):
         assert "last_updated" not in m
         assert "available" in m
         if not m["available"]:
-            assert m["display"] in {"Unavailable", "Not configured"}
+            assert m["display"] in {"Unavailable", "Not configured", "Not available"}
+    assert "weather" in payload
+    assert "quick_links" in payload
+    overview_keys = [m["key"] for m in payload["overview"]]
+    assert "cpu" in overview_keys
+    assert "ram" in overview_keys
+    assert "temp" in overview_keys
+    assert "uptime" in overview_keys
+    temp = next(m for m in server["metrics"] if m["key"] == "temp")
+    if not temp["available"]:
+        assert temp["display"] == "Not available"
+        assert server["status"] in {"online", "degraded"}
     if payload["storage"]:
         mount = payload["storage"][0]
         assert "mountpoint" in mount
         assert "percent" in mount
         assert "free_display" in mount
         assert "summary" in mount
+        assert mount["mountpoint"] not in {
+            "/etc/hostname",
+            "/etc/hosts",
+            "/etc/resolv.conf",
+            "/data",
+        }
 
 
 def test_settings_lists_future_services(client):

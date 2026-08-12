@@ -12,8 +12,19 @@ services:
       STARPULSE_URL: ${STARPULSE_URL:-}
       PORTAINER_URL: ${PORTAINER_URL:-}
       DOCKER_SOCKET: ${DOCKER_SOCKET:-/var/run/docker.sock}
+      HOST_FS_ROOT: ${HOST_FS_ROOT:-/hostfs}
+      HOST_SYS_ROOT: ${HOST_SYS_ROOT:-/sys}
+      WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
+      WEATHER_LOCATION: ${WEATHER_LOCATION:-Thetford, Norfolk, UK}
+      WEATHER_LATITUDE: ${WEATHER_LATITUDE:-}
+      WEATHER_LONGITUDE: ${WEATHER_LONGITUDE:-}
+      WEATHER_CACHE_SECONDS: ${WEATHER_CACHE_SECONDS:-600}
     volumes:
       - ./data:/data
+      # Host root (read-only) so Storage shows real disks, not container binds.
+      - /:/hostfs:ro,rslave
+      # Temperature sensors (best-effort; may be empty on some hosts).
+      - /sys:/sys:ro
       # Optional: enable Docker monitoring (read-only mount still grants broad control).
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
     restart: unless-stopped

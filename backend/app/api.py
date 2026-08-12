@@ -51,7 +51,10 @@ async def dashboard(
     config = store.read()
     server_name = config.get("server_name") or settings.server_name
     return await collect_dashboard(
-        registry=registry, config=config, server_name=server_name
+        registry=registry,
+        config=config,
+        server_name=server_name,
+        settings=settings,
     )
 
 

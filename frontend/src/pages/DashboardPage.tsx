@@ -3,9 +3,11 @@ import { fetchDashboard } from "../api";
 import type { DashboardResponse } from "../types";
 import { Header } from "../components/Header";
 import { HeroOverview } from "../components/HeroOverview";
+import { QuickLinks } from "../components/QuickLinks";
 import { RecentActivity } from "../components/RecentActivity";
 import { ServiceCard } from "../components/ServiceCard";
 import { StorageSection } from "../components/StorageSection";
+import { WeatherCard } from "../components/WeatherCard";
 
 const DEFAULT_REFRESH_MS = 10_000;
 const HISTORY_LENGTH = 24;
@@ -147,6 +149,14 @@ export function DashboardPage() {
                 </div>
               ) : null}
             </section>
+
+            <div className="mt-1 sm:mt-2">
+              <WeatherCard weather={data.weather} />
+            </div>
+
+            <div className="mt-5 pb-2 sm:mt-6">
+              <QuickLinks links={data.quick_links ?? []} />
+            </div>
           </>
         ) : !error ? (
           <div className="px-4 py-16 text-center text-sm text-muted sm:px-6">Loading…</div>

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,7 +31,46 @@ class Settings(BaseSettings):
     portainer_url: str | None = Field(default=None)
     docker_socket: str | None = Field(default=None)
 
+    # Host filesystem bind inside the container (e.g. /hostfs) for Storage.
+    host_fs_root: str | None = Field(default=None)
+    # Optional sysfs root for temperatures when /sys is remapped.
+    host_sys_root: str | None = Field(default=None)
+
+    # Weather (Open-Meteo — no API key). Does not affect system health.
+    weather_enabled: bool = Field(default=True)
+    weather_location: str = Field(default="Thetford, Norfolk, UK")
+    weather_latitude: float | None = Field(default=None)
+    weather_longitude: float | None = Field(default=None)
+    weather_cache_seconds: int = Field(default=600, ge=60, le=3600)
+
     http_timeout_seconds: float = Field(default=5.0)
+
+    @field_validator(
+        "jellyfin_url",
+        "jellyfin_api_key",
+        "starpulse_url",
+        "portainer_url",
+        "docker_socket",
+        "host_fs_root",
+        "host_sys_root",
+        mode="before",
+    )
+    @classmethod
+    def _blank_str_to_none(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("weather_latitude", "weather_longitude", mode="before")
+    @classmethod
+    def _blank_coord_to_none(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def config_path(self) -> Path:

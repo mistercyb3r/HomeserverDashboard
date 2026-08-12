@@ -117,6 +117,27 @@ class ActivityItem(BaseModel):
     text: str
 
 
+class WeatherInfo(BaseModel):
+    """Compact weather snapshot — never affects system health."""
+
+    available: bool = False
+    location: str = "Thetford, Norfolk, UK"
+    temperature_c: float | None = None
+    feels_like_c: float | None = None
+    high_c: float | None = None
+    low_c: float | None = None
+    condition: str | None = None
+    icon: str | None = None
+    rain_probability: int | None = None
+    error: str | None = None
+
+
+class QuickLink(BaseModel):
+    id: str
+    label: str
+    url: str
+
+
 class DashboardResponse(BaseModel):
     server_name: str
     generated_at: datetime
@@ -126,6 +147,8 @@ class DashboardResponse(BaseModel):
     storage: list[StorageMount] = Field(default_factory=list)
     services: list[ServiceSnapshot]
     activity: list[ActivityItem] = Field(default_factory=list)
+    weather: WeatherInfo | None = None
+    quick_links: list[QuickLink] = Field(default_factory=list)
 
 
 class ServiceDefinition(BaseModel):

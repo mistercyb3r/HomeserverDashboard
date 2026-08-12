@@ -12,7 +12,8 @@ import psutil
 
 from app.adapters.base import ServiceAdapter, format_uptime_seconds, metric, utcnow
 from app.schemas import Metric, ServiceSnapshot, ServiceStatus
-from app.storage import BAD_PERCENT, WARN_PERCENT, collect_storage_mounts
+from app.storage import BAD_PERCENT, collect_storage_mounts
+from app.temperatures import cpu_temperature_c, nvme_temperature_c
 
 _BOOT_TIME = psutil.boot_time()
 _NET_PREV: dict[str, Any] = {"ts": None, "bytes_sent": 0, "bytes_recv": 0}
@@ -32,27 +33,6 @@ def _format_bytes(num: float) -> str:
 
 def _format_rate(bytes_per_sec: float) -> str:
     return f"{_format_bytes(bytes_per_sec)}/s"
-
-
-def _cpu_temp_c() -> float | None:
-    try:
-        temps = psutil.sensors_temperatures()
-    except (AttributeError, NotImplementedError, RuntimeError):
-        return None
-    if not temps:
-        return None
-    preferred = ("coretemp", "k10temp", "cpu_thermal", "acpi", "zenpower")
-    for key in preferred:
-        entries = temps.get(key)
-        if entries:
-            values = [t.current for t in entries if t.current is not None]
-            if values:
-                return round(sum(values) / len(values), 1)
-    for entries in temps.values():
-        values = [t.current for t in entries if t.current is not None]
-        if values:
-            return round(sum(values) / len(values), 1)
-    return None
 
 
 def _network_rates() -> tuple[float | None, float | None]:
@@ -101,7 +81,8 @@ class ServerAdapter(ServiceAdapter):
             load = os.getloadavg()  # type: ignore[attr-defined]
         except (AttributeError, OSError):
             load = None
-        temp = _cpu_temp_c()
+        temp = cpu_temperature_c()
+        nvme_temp = nvme_temperature_c()
         down, up = _network_rates()
         uptime_seconds = time.time() - _BOOT_TIME
         uptime_display = format_uptime_seconds(uptime_seconds)
@@ -128,63 +109,95 @@ class ServerAdapter(ServiceAdapter):
                 display=f"{mem.percent:.0f}%",
                 primary=True,
             ),
-            metric(
-                "disk",
-                "Storage",
-                round(disk.percent, 1),
-                unit="%",
-                display=f"{disk.percent:.0f}%",
-                primary=True,
-                detail=f"{_format_bytes(disk.free)} free",
-            ),
-            metric(
-                "disk_free",
-                "Free",
-                int(disk.free),
-                display=f"{_format_bytes(disk.free)} free",
-                primary=True,
-            ),
-            metric(
-                "uptime",
-                "Uptime",
-                int(uptime_seconds),
-                display=uptime_display,
-                primary=worst_disk < WARN_PERCENT,
-            ),
-            metric(
-                "temp",
-                "CPU temp",
-                temp,
-                unit="°C",
-                display=None if temp is None else f"{temp:.0f}",
-            ),
-            metric(
-                "net_down",
-                "Download",
-                None if down is None else round(down, 1),
-                display=None if down is None else _format_rate(down),
-            ),
-            metric(
-                "net_up",
-                "Upload",
-                None if up is None else round(up, 1),
-                display=None if up is None else _format_rate(up),
-            ),
-            metric("hostname", "Hostname", hostname, display=hostname),
-            metric("os", "OS", os_name, display=os_name),
-            metric("kernel", "Kernel", kernel, display=kernel),
-            metric(
-                "load",
-                "Load avg",
-                None if load is None else round(load[0], 2),
-                display=(
-                    None
-                    if load is None
-                    else f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}"
-                ),
-            ),
         ]
 
+        if temp is None:
+            metrics.append(
+                Metric(
+                    key="temp",
+                    label="Temp",
+                    value=None,
+                    display="Not available",
+                    unit="°C",
+                    available=False,
+                    primary=True,
+                )
+            )
+        else:
+            metrics.append(
+                metric(
+                    "temp",
+                    "Temp",
+                    temp,
+                    unit="°C",
+                    display=f"{temp:.0f}",
+                    primary=True,
+                )
+            )
+
+        if nvme_temp is not None:
+            metrics.append(
+                metric(
+                    "nvme_temp",
+                    "NVMe",
+                    nvme_temp,
+                    unit="°C",
+                    display=f"{nvme_temp:.0f}",
+                )
+            )
+
+        metrics.extend(
+            [
+                metric(
+                    "disk",
+                    "Storage",
+                    round(disk.percent, 1),
+                    unit="%",
+                    display=f"{disk.percent:.0f}%",
+                    detail=f"{_format_bytes(disk.free)} free",
+                ),
+                metric(
+                    "disk_free",
+                    "Free",
+                    int(disk.free),
+                    display=f"{_format_bytes(disk.free)} free",
+                ),
+                metric(
+                    "uptime",
+                    "Uptime",
+                    int(uptime_seconds),
+                    display=uptime_display,
+                    primary=True,
+                ),
+                metric(
+                    "net_down",
+                    "Download",
+                    None if down is None else round(down, 1),
+                    display=None if down is None else _format_rate(down),
+                ),
+                metric(
+                    "net_up",
+                    "Upload",
+                    None if up is None else round(up, 1),
+                    display=None if up is None else _format_rate(up),
+                ),
+                metric("hostname", "Hostname", hostname, display=hostname),
+                metric("os", "OS", os_name, display=os_name),
+                metric("kernel", "Kernel", kernel, display=kernel),
+                metric(
+                    "load",
+                    "Load avg",
+                    None if load is None else round(load[0], 2),
+                    display=(
+                        None
+                        if load is None
+                        else f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}"
+                    ),
+                ),
+            ]
+        )
+
+        # Missing temperature must never degrade the server card.
         status = ServiceStatus.ONLINE
         status_label = "Online"
         if cpu >= 90 or mem.percent >= 92 or worst_disk >= BAD_PERCENT:
@@ -193,6 +206,9 @@ class ServerAdapter(ServiceAdapter):
                 status_label = "Storage nearly full"
             else:
                 status_label = "High resource usage"
+        elif temp is not None and temp >= 90:
+            status = ServiceStatus.DEGRADED
+            status_label = "High CPU temperature"
 
         return ServiceSnapshot(
             id=self.id,

@@ -75,10 +75,17 @@ export function HeroOverview({
   cpuHistory,
   networkHistory,
 }: HeroOverviewProps) {
-  const orderedKeys = ["cpu", "ram", "disk", "network", "uptime", "load"];
+  const orderedKeys = ["cpu", "ram", "temp", "uptime"];
   const primary = orderedKeys
     .map((key) => overview.find((m) => m.key === key))
     .filter((m): m is OverviewMetric => Boolean(m));
+
+  const extras = overview.filter(
+    (m) =>
+      !orderedKeys.includes(m.key) &&
+      m.key !== "starlink" &&
+      (m.key === "network" || m.key === "nvme_temp"),
+  );
 
   const starlink = services.find((s) => s.id === "starlink");
   const internetAvailable = Boolean(
@@ -95,7 +102,7 @@ export function HeroOverview({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <div className="max-w-xl">
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
-              Home server
+              Server
             </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
               Cockpit
@@ -128,21 +135,27 @@ export function HeroOverview({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {primary.map((item) => (
             <OverviewTile
               key={item.key}
               item={item}
-              sparkline={
-                item.key === "cpu"
-                  ? cpuHistory
-                  : item.key === "network"
-                    ? networkHistory
-                    : undefined
-              }
+              sparkline={item.key === "cpu" ? cpuHistory : undefined}
             />
           ))}
         </div>
+
+        {extras.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {extras.map((item) => (
+              <OverviewTile
+                key={item.key}
+                item={item}
+                sparkline={item.key === "network" ? networkHistory : undefined}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

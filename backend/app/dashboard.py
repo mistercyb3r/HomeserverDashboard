@@ -5,18 +5,21 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.adapters.base import metric, utcnow
 from app.adapters.registry import AdapterRegistry
+from app.config import Settings
 from app.schemas import (
     ActivityItem,
     DashboardResponse,
     OverviewMetric,
+    QuickLink,
     ServiceSnapshot,
     ServiceStatus,
     SystemHealth,
     SystemHealthLevel,
+    WeatherInfo,
 )
 from app.storage import collect_storage_mounts
+from app.weather import fetch_weather
 
 
 def compute_system_health(services: list[ServiceSnapshot]) -> SystemHealth:
@@ -101,6 +104,15 @@ def _find_metric(snapshot: ServiceSnapshot, key: str) -> OverviewMetric:
                     )
                     if free and free.available:
                         detail = free.display
+            if (
+                key == "temp"
+                and item.available
+                and isinstance(item.value, (int, float))
+            ):
+                if float(item.value) >= 90:
+                    tone = "bad"
+                elif float(item.value) >= 80:
+                    tone = "warn"
             return OverviewMetric(
                 key=item.key,
                 label=item.label,
@@ -125,11 +137,13 @@ def build_overview(services: list[ServiceSnapshot]) -> list[OverviewMetric]:
             [
                 _find_metric(server, "cpu"),
                 _find_metric(server, "ram"),
-                _find_metric(server, "disk"),
+                _find_metric(server, "temp"),
                 _find_metric(server, "uptime"),
-                _find_metric(server, "load"),
             ]
         )
+        nvme = _find_metric(server, "nvme_temp")
+        if nvme.available:
+            overview.append(nvme)
         net_down = _find_metric(server, "net_down")
         net_up = _find_metric(server, "net_up")
         if net_down.available or net_up.available:
@@ -149,18 +163,12 @@ def build_overview(services: list[ServiceSnapshot]) -> list[OverviewMetric]:
                     available=net_down.available or net_up.available,
                 )
             )
-        else:
-            overview.append(
-                OverviewMetric(key="network", label="Network", display="Unavailable")
-            )
     else:
         for key, label in [
             ("cpu", "CPU"),
             ("ram", "RAM"),
-            ("disk", "Disk"),
+            ("temp", "Temp"),
             ("uptime", "Uptime"),
-            ("load", "Load"),
-            ("network", "Network"),
         ]:
             overview.append(OverviewMetric(key=key, label=label, display="Unavailable"))
 
@@ -237,21 +245,59 @@ def build_activity(services: list[ServiceSnapshot]) -> list[ActivityItem]:
     return items[:8]
 
 
+def build_quick_links(services: list[ServiceSnapshot]) -> list[QuickLink]:
+    links: list[QuickLink] = []
+    seen: set[str] = set()
+    for service in services:
+        if service.status == ServiceStatus.NOT_CONFIGURED:
+            continue
+        url = service.href or service.url
+        if not url or url.startswith("/"):
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        links.append(QuickLink(id=service.id, label=service.name, url=url))
+    return links
+
+
 async def collect_dashboard(
     *,
     registry: AdapterRegistry,
     config: dict[str, Any],
     server_name: str,
+    settings: Settings | None = None,
 ) -> DashboardResponse:
+    from app.adapters.base import utcnow
+
     adapters = registry.enabled_adapters(config)
     snapshots = list(await asyncio.gather(*[adapter.fetch() for adapter in adapters]))
     order = {adapter.id: index for index, adapter in enumerate(adapters)}
     snapshots.sort(key=lambda s: order.get(s.id, 999))
 
+    host_fs = settings.host_fs_root if settings else None
     try:
-        storage = collect_storage_mounts()
+        storage = collect_storage_mounts(host_fs_root=host_fs)
     except Exception:  # noqa: BLE001
         storage = []
+
+    weather: WeatherInfo | None = None
+    if settings is not None:
+        try:
+            weather = await fetch_weather(
+                location=settings.weather_location,
+                latitude=settings.weather_latitude,
+                longitude=settings.weather_longitude,
+                cache_seconds=settings.weather_cache_seconds,
+                timeout=settings.http_timeout_seconds,
+                enabled=settings.weather_enabled,
+            )
+        except Exception:  # noqa: BLE001
+            weather = WeatherInfo(
+                available=False,
+                location=settings.weather_location,
+                error="Weather unavailable",
+            )
 
     return DashboardResponse(
         server_name=server_name,
@@ -262,13 +308,15 @@ async def collect_dashboard(
         storage=storage,
         services=snapshots,
         activity=build_activity(snapshots),
+        weather=weather,
+        quick_links=build_quick_links(snapshots),
     )
 
 
 __all__ = [
     "build_activity",
     "build_overview",
+    "build_quick_links",
     "collect_dashboard",
     "compute_system_health",
-    "metric",
 ]

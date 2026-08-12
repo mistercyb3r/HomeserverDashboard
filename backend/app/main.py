@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -19,6 +20,12 @@ def create_app() -> FastAPI:
     settings = get_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     store = build_config_store(settings)
+
+    # Propagate host paths for storage/temp helpers used outside Depends().
+    if settings.host_fs_root:
+        os.environ["HOST_FS_ROOT"] = settings.host_fs_root
+    if settings.host_sys_root:
+        os.environ["HOST_SYS_ROOT"] = settings.host_sys_root
 
     app = FastAPI(
         title="Homeserver Dashboard",
