@@ -1,15 +1,37 @@
 # Homeserver Dashboard
 
+# Environments / secrets
+.env
+.env.*
+!.env.example
+
+# Local runtime data
+data/
+uploads/
+**/uploads/
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Python
 .venv/
+venv/
+ENV/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.env
-data/
-backend/static/
-frontend/dist/
+
+# Node / frontend build
+node_modules/
 frontend/node_modules/
+frontend/dist/
+backend/static/
+
+# Logs / OS
 *.log
 .DS_Store
