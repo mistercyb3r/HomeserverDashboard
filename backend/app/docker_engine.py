@@ -1,6 +1,10 @@
 """Read-only Docker Engine API client.
 
 Talks to the daemon over a Unix socket, named pipe, or TCP URL.
+Uses synchronous httpx inside worker threads for Unix/TCP so concurrent
+calls never share an AsyncHTTPTransport (which caused InvalidStateError
+during connection cleanup with httpx/httpcore/anyio).
+
 Never exposes env vars, secrets, or sensitive labels to callers.
 """
 
@@ -8,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,14 +22,8 @@ DEFAULT_SOCKET = "/var/run/docker.sock"
 WINDOWS_NPIPE = "npipe:////./pipe/docker_engine"
 
 
-@dataclass
-class DockerConnection:
-    base_url: str
-    transport: httpx.AsyncBaseTransport | None = None
-
-
 def resolve_docker_url(socket_path: str | None) -> str | None:
-    """Return an httpx/docker-compatible base URL, or None if unusable."""
+    """Return a docker-compatible base URL, or None if unusable."""
     raw = (socket_path or "").strip()
     if not raw:
         return None
@@ -58,110 +55,114 @@ def socket_appears_available(socket_path: str | None) -> bool:
     return True
 
 
-def _build_connection(socket_path: str | None) -> DockerConnection | None:
-    url = resolve_docker_url(socket_path)
-    if not url:
-        return None
-
-    if url.startswith("unix://"):
-        path = url.removeprefix("unix://")
-        return DockerConnection(
-            base_url="http://docker.local",
-            transport=httpx.AsyncHTTPTransport(uds=path),
-        )
-
-    if url.startswith("npipe://"):
-        # httpx cannot speak Windows named pipes; use the Docker SDK in a thread.
-        return DockerConnection(base_url=url, transport=None)
-
-    if url.startswith("tcp://"):
-        return DockerConnection(base_url="http://" + url.removeprefix("tcp://"))
-
-    return DockerConnection(base_url=url)
-
-
 class DockerEngineError(Exception):
     pass
 
 
 class DockerEngineClient:
-    """Minimal read-only Docker Engine wrapper."""
+    """Minimal read-only Docker Engine wrapper.
+
+    Each HTTP call builds and tears down its own sync client/transport in a
+    worker thread. Concurrent asyncio.gather() callers are therefore isolated.
+    """
 
     def __init__(self, socket_path: str | None, timeout: float = 5.0) -> None:
         self.socket_path = socket_path
         self.timeout = timeout
-        self._connection = _build_connection(socket_path)
+        self._url = resolve_docker_url(socket_path)
 
     @property
     def configured(self) -> bool:
-        return self._connection is not None
+        return self._url is not None
 
-    async def _sdk_get_json(
+    def _sync_http_get_json(
         self, path: str, params: dict[str, Any] | None = None
     ) -> Any:
-        def _call() -> Any:
-            try:
-                import docker  # type: ignore[import-untyped]
-            except ImportError as exc:
-                raise DockerEngineError(
-                    "Docker named-pipe support requires the 'docker' package"
-                ) from exc
-            try:
-                client = docker.DockerClient(
-                    base_url=self._connection.base_url,
-                    timeout=self.timeout,
-                )
-                try:
-                    api = client.api
-                    if path == "/version":
-                        return api.version()
-                    if path == "/info":
-                        return api.info()
-                    if path.startswith("/containers/json"):
-                        return api.containers(all=True)
-                    if path.startswith("/images/json"):
-                        return api.images()
-                    if path.startswith("/volumes"):
-                        return api.volumes()
-                    if "/stats" in path:
-                        container_id = path.split("/")[2]
-                        return api.stats(container_id, stream=False)
-                    if path.startswith("/containers/") and path.endswith("/json"):
-                        container_id = path.split("/")[2]
-                        return api.inspect_container(container_id)
-                    raise DockerEngineError(f"Unsupported Docker SDK path: {path}")
-                finally:
-                    client.close()
-            except DockerEngineError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - normalize SDK failures
-                raise DockerEngineError(str(exc)) from exc
+        assert self._url is not None
+        url = self._url
+        transport: httpx.BaseTransport | None = None
+        base_url: str
 
-        return await asyncio.to_thread(_call)
-
-    async def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        if self._connection is None:
-            raise DockerEngineError("Docker is not configured")
-
-        if self._connection.base_url.startswith("npipe://"):
-            return await self._sdk_get_json(path, params)
+        if url.startswith("unix://"):
+            uds = url.removeprefix("unix://")
+            transport = httpx.HTTPTransport(uds=uds)
+            base_url = "http://docker.local"
+        elif url.startswith("tcp://"):
+            base_url = "http://" + url.removeprefix("tcp://")
+        elif url.startswith(("http://", "https://")):
+            base_url = url
+        else:
+            raise DockerEngineError(f"Unsupported Docker URL scheme: {url}")
 
         try:
-            async with httpx.AsyncClient(
-                transport=self._connection.transport,
-                base_url=self._connection.base_url,
+            with httpx.Client(
+                transport=transport,
+                base_url=base_url,
                 timeout=self.timeout,
             ) as client:
-                response = await client.get(path, params=params)
+                response = client.get(path, params=params)
+                # Fully consume the body before the client/transport closes.
+                payload = response.json() if response.content else None
+                if response.status_code >= 400:
+                    raise DockerEngineError(
+                        f"Docker API returned HTTP {response.status_code}"
+                    )
+                return payload
+        except DockerEngineError:
+            raise
         except httpx.HTTPError as exc:
             raise DockerEngineError(str(exc)) from exc
-
-        if response.status_code >= 400:
-            raise DockerEngineError(f"Docker API returned HTTP {response.status_code}")
-        try:
-            return response.json()
         except ValueError as exc:
             raise DockerEngineError("Docker API returned invalid JSON") from exc
+        except Exception as exc:  # noqa: BLE001 - normalize transport failures
+            raise DockerEngineError(str(exc)) from exc
+
+    def _sync_sdk_get_json(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> Any:
+        assert self._url is not None
+        try:
+            import docker  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise DockerEngineError(
+                "Docker named-pipe support requires the 'docker' package"
+            ) from exc
+        try:
+            client = docker.DockerClient(base_url=self._url, timeout=self.timeout)
+            try:
+                api = client.api
+                if path == "/version":
+                    return api.version()
+                if path == "/info":
+                    return api.info()
+                if path.startswith("/containers/json"):
+                    return api.containers(all=True)
+                if path.startswith("/images/json"):
+                    return api.images()
+                if path.startswith("/volumes"):
+                    return api.volumes()
+                if "/stats" in path:
+                    container_id = path.split("/")[2]
+                    return api.stats(container_id, stream=False)
+                if path.startswith("/containers/") and path.endswith("/json"):
+                    container_id = path.split("/")[2]
+                    return api.inspect_container(container_id)
+                raise DockerEngineError(f"Unsupported Docker SDK path: {path}")
+            finally:
+                client.close()
+        except DockerEngineError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - normalize SDK failures
+            raise DockerEngineError(str(exc)) from exc
+
+    async def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        if self._url is None:
+            raise DockerEngineError("Docker is not configured")
+
+        if self._url.startswith("npipe://"):
+            return await asyncio.to_thread(self._sync_sdk_get_json, path, params)
+
+        return await asyncio.to_thread(self._sync_http_get_json, path, params)
 
     async def version(self) -> dict[str, Any]:
         data = await self.get_json("/version")

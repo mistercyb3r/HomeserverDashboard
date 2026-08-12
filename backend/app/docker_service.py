@@ -56,20 +56,9 @@ async def collect_docker_detail(
             client.containers(all_containers=True),
         )
     except DockerEngineError as exc:
-        message = str(exc)
-        lowered = message.lower()
-        missing_socket = any(
-            token in lowered
-            for token in (
-                "no such file",
-                "cannot find the file",
-                "filenotfounderror",
-                "does not exist",
-            )
-        )
-        if missing_socket:
-            return _empty_detail(configured=False, error="Docker socket not available")
-        return _empty_detail(configured=True, error=message)
+        return _detail_from_engine_error(exc)
+    except Exception as exc:  # noqa: BLE001 - never 500 the dashboard on Docker I/O
+        return _empty_detail(configured=True, error=str(exc) or "Docker unavailable")
 
     images_count: int | None = None
     volumes_count: int | None = None
@@ -82,11 +71,13 @@ async def collect_docker_detail(
                 images_count = int(images_count)
             except (TypeError, ValueError):
                 images_count = None
+    except Exception:  # noqa: BLE001
+        images_count = None
     try:
         volumes_payload = await client.volumes()
         volumes = volumes_payload.get("Volumes") or []
         volumes_count = len(volumes) if isinstance(volumes, list) else None
-    except DockerEngineError:
+    except Exception:  # noqa: BLE001
         volumes_count = None
 
     running = stopped = restarting = paused = 0
@@ -121,7 +112,10 @@ async def collect_docker_detail(
         if item.get("Id")
         and str(item.get("State") or "").lower() in {"running", "restarting"}
     ]
-    inspect_map, stats_map = await _enrich_containers(client, enrich_ids)
+    try:
+        inspect_map, stats_map = await _enrich_containers(client, enrich_ids)
+    except Exception:  # noqa: BLE001 - detail page still useful without enrichment
+        inspect_map, stats_map = {}, {}
 
     containers = [
         _to_container(item, inspect_map, stats_map) for item in containers_raw
@@ -137,6 +131,23 @@ async def collect_docker_detail(
         overview=overview,
         containers=containers,
     )
+
+
+def _detail_from_engine_error(exc: DockerEngineError) -> DockerDetailResponse:
+    message = str(exc)
+    lowered = message.lower()
+    missing_socket = any(
+        token in lowered
+        for token in (
+            "no such file",
+            "cannot find the file",
+            "filenotfounderror",
+            "does not exist",
+        )
+    )
+    if missing_socket:
+        return _empty_detail(configured=False, error="Docker socket not available")
+    return _empty_detail(configured=True, error=message or "Docker unavailable")
 
 
 async def _enrich_containers(

@@ -97,6 +97,25 @@ class DockerAdapter(ServiceAdapter):
                     metric("stopped", "Stopped", None, primary=True),
                 ],
             )
+        except Exception as exc:  # noqa: BLE001 - never break the dashboard card
+            return offline_snapshot(
+                service_id=self.id,
+                name=self.name,
+                description=self.description,
+                icon=self.icon,
+                url=None,
+                href="/docker",
+                open_label="Open Docker",
+                error=str(exc) or "Docker unavailable",
+                status=ServiceStatus.DEGRADED,
+                status_label="Unavailable",
+                last_success_at=_LAST_SUCCESS.get(self.id),
+                metrics=[
+                    metric("containers", "Containers", None, primary=True),
+                    metric("running", "Running", None, primary=True),
+                    metric("stopped", "Stopped", None, primary=True),
+                ],
+            )
 
         running = 0
         stopped = 0

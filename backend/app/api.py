@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app import __version__
+from app.adapters.base import utcnow
 from app.adapters.registry import AdapterRegistry, build_registry
 from app.config import Settings, get_settings
 from app.config_store import ConfigStore
@@ -77,11 +78,21 @@ async def docker_detail(
     entry = (config.get("services") or {}).get("docker") or {}
     enabled = bool(entry.get("enabled", False))
     socket = entry.get("socket") or settings.docker_socket or DEFAULT_SOCKET
-    return await collect_docker_detail(
-        enabled=enabled,
-        socket_path=socket,
-        timeout=settings.http_timeout_seconds,
-    )
+    try:
+        return await collect_docker_detail(
+            enabled=enabled,
+            socket_path=socket,
+            timeout=settings.http_timeout_seconds,
+        )
+    except Exception as exc:  # noqa: BLE001 - Docker must never 500 the API
+        return DockerDetailResponse(
+            available=False,
+            configured=bool(enabled and socket),
+            generated_at=utcnow(),
+            error=str(exc) or "Docker unavailable",
+            overview=None,
+            containers=[],
+        )
 
 
 @router.get("/settings", response_model=SettingsResponse)
