@@ -142,6 +142,7 @@ class DashboardResponse(BaseModel):
     server_name: str
     generated_at: datetime
     refresh_interval_seconds: int = 10
+    app_version: str | None = None
     system_health: SystemHealth
     overview: list[OverviewMetric]
     storage: list[StorageMount] = Field(default_factory=list)

@@ -22,9 +22,11 @@ services:
     volumes:
       - ./data:/data
       # Host root (read-only) so Storage shows real disks, not container binds.
-      - /:/hostfs:ro,rslave
-      # Temperature sensors (best-effort; may be empty on some hosts).
-      - /sys:/sys:ro
+      # Avoid rslave — it breaks compose up on some hosts.
+      - /:/hostfs:ro
+      # Temperature sensors (best-effort).
+      - /sys/class/hwmon:/sys/class/hwmon:ro
+      - /sys/class/thermal:/sys/class/thermal:ro
       # Optional: enable Docker monitoring (read-only mount still grants broad control).
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
     restart: unless-stopped

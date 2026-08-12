@@ -91,6 +91,7 @@ export function DashboardPage() {
         updatedAt={data?.generated_at ?? null}
         refreshing={refreshing}
         stale={stale}
+        appVersion={data?.app_version ?? null}
       />
 
       <div className="mx-auto w-full max-w-6xl pb-10">

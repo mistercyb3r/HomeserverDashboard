@@ -12,6 +12,7 @@ interface HeaderProps {
   refreshing?: boolean;
   stale?: boolean;
   showRefreshMeta?: boolean;
+  appVersion?: string | null;
 }
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -28,6 +29,7 @@ export function Header({
   refreshing = false,
   stale = false,
   showRefreshMeta = true,
+  appVersion = null,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-border-subtle/90 bg-canvas/85 backdrop-blur-md">
@@ -41,8 +43,15 @@ export function Header({
             <span className="text-[11px] font-semibold tracking-tight">HS</span>
           </Link>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold tracking-tight text-ink">
-              {serverName}
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-sm font-semibold tracking-tight text-ink">
+                {serverName}
+              </div>
+              {appVersion ? (
+                <span className="shrink-0 rounded-md border border-border/80 bg-surface/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-faint">
+                  v{appVersion}
+                </span>
+              ) : null}
             </div>
             <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
               {health ? (

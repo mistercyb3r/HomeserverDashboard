@@ -268,6 +268,7 @@ async def collect_dashboard(
     server_name: str,
     settings: Settings | None = None,
 ) -> DashboardResponse:
+    from app import __version__
     from app.adapters.base import utcnow
 
     adapters = registry.enabled_adapters(config)
@@ -303,6 +304,7 @@ async def collect_dashboard(
         server_name=server_name,
         generated_at=utcnow(),
         refresh_interval_seconds=int(config.get("refresh_interval_seconds") or 10),
+        app_version=__version__,
         system_health=compute_system_health(snapshots),
         overview=build_overview(snapshots),
         storage=storage,

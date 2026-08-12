@@ -108,6 +108,7 @@ export interface DashboardResponse {
   server_name: string;
   generated_at: string;
   refresh_interval_seconds: number;
+  app_version?: string | null;
   system_health: SystemHealth;
   overview: OverviewMetric[];
   storage: StorageMount[];

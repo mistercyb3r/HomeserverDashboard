@@ -16,6 +16,7 @@ def test_health(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["version"] == "1.1.1"
 
 
 def test_dashboard_includes_server(client):
@@ -39,6 +40,7 @@ def test_dashboard_includes_server(client):
             assert m["display"] in {"Unavailable", "Not configured", "Not available"}
     assert "weather" in payload
     assert "quick_links" in payload
+    assert payload.get("app_version") == "1.1.1"
     overview_keys = [m["key"] for m in payload["overview"]]
     assert "cpu" in overview_keys
     assert "ram" in overview_keys
