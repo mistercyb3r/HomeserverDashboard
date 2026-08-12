@@ -1,0 +1,15 @@
+# Homeserver Dashboard
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+data/
+backend/static/
+frontend/dist/
+frontend/node_modules/
+*.log
+.DS_Store

@@ -1,0 +1,50 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-canvas: #09090b;
+  --color-surface: #111113;
+  --color-surface-2: #18181b;
+  --color-border: #27272a;
+  --color-border-subtle: #1c1c1f;
+  --color-ink: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-faint: #71717a;
+  --color-good: #3ecf8e;
+  --color-warn: #eab308;
+  --color-bad: #f07178;
+  --color-accent: #e4e4e7;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    font-family: var(--font-sans);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    min-height: 100svh;
+  }
+
+  button,
+  input,
+  a {
+    font: inherit;
+  }
+}

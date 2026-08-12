@@ -1,0 +1,18 @@
+services:
+  dashboard:
+    build: .
+    container_name: homeserver-dashboard
+    ports:
+      - "8080:8080"
+    environment:
+      DATA_DIR: /data
+      SERVER_NAME: ${SERVER_NAME:-Home Server}
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      STARPULSE_URL: ${STARPULSE_URL:-}
+      DOCKER_SOCKET: ${DOCKER_SOCKET:-/var/run/docker.sock}
+    volumes:
+      - ./data:/data
+      # Optional: enable Docker monitoring (read-only mount still grants broad control).
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    restart: unless-stopped
