@@ -36,7 +36,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:8787](http://localhost:8787) (override with `DASHBOARD_PORT`).
 
 Config persists in `./data` → `/data` inside the container (`config.json`).
 
