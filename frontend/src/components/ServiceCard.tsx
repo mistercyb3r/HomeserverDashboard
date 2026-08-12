@@ -1,15 +1,16 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
-import type { Metric, ServiceSnapshot } from "../types";
+import type { Metric, PlaybackSession, ServiceSnapshot } from "../types";
 import { ServiceIcon } from "./ServiceIcon";
 import { StatusDot } from "./StatusDot";
 import { formatRelativeTime } from "../lib/format";
 import { emptyStateCopy, serviceStatusLabel } from "../lib/status";
+import { JellyfinNowPlaying } from "./JellyfinNowPlaying";
 
 function pickMetrics(service: ServiceSnapshot): Metric[] {
-  const primary = service.metrics.filter((m) => m.primary);
+  const primary = service.metrics.filter((m) => m.primary && m.key !== "uptime");
   if (primary.length > 0) return primary.slice(0, 4);
-  return service.metrics.slice(0, 4);
+  return service.metrics.filter((m) => m.key !== "uptime").slice(0, 4);
 }
 
 interface ServiceCardProps {
@@ -18,11 +19,14 @@ interface ServiceCardProps {
 }
 
 export function ServiceCard({ service, now }: ServiceCardProps) {
-  const metrics = pickMetrics(service);
+  const showNowPlaying = service.id === "jellyfin" && service.now_playing !== null && service.now_playing !== undefined;
+  const metrics = showNowPlaying
+    ? pickMetrics(service).filter((m) => m.key === "users" || m.key === "version")
+    : pickMetrics(service);
   const href = service.href || service.url;
   const isInternal = Boolean(href?.startsWith("/"));
   const isIdle = service.status === "not_configured";
-  const statusText = serviceStatusLabel(service.status);
+  const statusText = service.status_label || serviceStatusLabel(service.status);
 
   const actionClass =
     "inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted transition hover:border-ink/25 hover:text-ink active:scale-[0.98]";
@@ -70,8 +74,11 @@ export function ServiceCard({ service, now }: ServiceCardProps) {
             </h3>
             <div className="mt-1 flex items-center gap-2 text-xs text-muted">
               <StatusDot status={service.status} />
-              <span>{statusText}</span>
+              <span className="truncate">{statusText}</span>
             </div>
+            {!isIdle && service.uptime ? (
+              <p className="mt-1 text-xs text-faint">Uptime: {service.uptime}</p>
+            ) : null}
           </div>
         </div>
         {action}
@@ -82,29 +89,35 @@ export function ServiceCard({ service, now }: ServiceCardProps) {
           {emptyStateCopy(service.id, service.error)}
         </p>
       ) : (
-        <ul className="mt-4 space-y-1.5">
+        <div className="mt-4 space-y-3">
+          {showNowPlaying ? (
+            <JellyfinNowPlaying sessions={service.now_playing as PlaybackSession[]} />
+          ) : null}
+
           {metrics.length > 0 ? (
-            metrics.map((m) => (
-              <li
-                key={m.key}
-                className="flex items-baseline justify-between gap-3 text-[13px]"
-              >
-                <span className="truncate text-faint">{m.label}</span>
-                <span
-                  className={`shrink-0 font-mono tabular-nums ${
-                    m.available ? "text-ink/90" : "text-faint"
-                  }`}
+            <ul className="space-y-1.5">
+              {metrics.map((m) => (
+                <li
+                  key={m.key}
+                  className="flex items-baseline justify-between gap-3 text-[13px]"
                 >
-                  {m.available ? m.display : "—"}
-                </span>
-              </li>
-            ))
-          ) : (
-            <li className="text-[13px] text-faint">
+                  <span className="truncate text-faint">{m.label}</span>
+                  <span
+                    className={`shrink-0 font-mono tabular-nums ${
+                      m.available ? "text-ink/90" : "text-faint"
+                    }`}
+                  >
+                    {m.available ? m.display : "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : !showNowPlaying ? (
+            <p className="text-[13px] text-faint">
               {service.error || "No metrics available"}
-            </li>
-          )}
-        </ul>
+            </p>
+          ) : null}
+        </div>
       )}
 
       <div className="mt-auto pt-4 text-[11px] text-faint">

@@ -13,7 +13,113 @@ from app.adapters.base import (
     offline_snapshot,
     utcnow,
 )
-from app.schemas import Metric, ServiceSnapshot, ServiceStatus
+from app.schemas import Metric, PlaybackSession, ServiceSnapshot, ServiceStatus
+
+
+def _ticks_to_display(ticks: Any) -> str | None:
+    """Convert Jellyfin ticks (100-ns) to a compact duration string."""
+    try:
+        total_seconds = int(ticks) // 10_000_000
+    except (TypeError, ValueError):
+        return None
+    if total_seconds < 0:
+        return None
+    hours, rem = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{seconds}s"
+
+
+def _episode_subtitle(item: dict[str, Any]) -> str | None:
+    season = item.get("ParentIndexNumber")
+    episode = item.get("IndexNumber")
+    episode_name = item.get("Name")
+    parts: list[str] = []
+    if season is not None and episode is not None:
+        try:
+            parts.append(f"S{int(season):02d} E{int(episode):02d}")
+        except (TypeError, ValueError):
+            parts.append(f"S{season} E{episode}")
+    elif episode_name:
+        parts.append(str(episode_name))
+    if season is not None and episode is not None and episode_name:
+        # Prefer "S01 E03 · Episode Title" when both exist.
+        return f"{parts[0]} · {episode_name}"
+    return parts[0] if parts else None
+
+
+def parse_active_playback(sessions: Any) -> list[PlaybackSession]:
+    """Extract currently playing items only — safe display fields."""
+    if not isinstance(sessions, list):
+        return []
+
+    rows: list[PlaybackSession] = []
+    for index, session in enumerate(sessions):
+        if not isinstance(session, dict):
+            continue
+        item = session.get("NowPlayingItem")
+        if not isinstance(item, dict):
+            continue
+
+        play_state = session.get("PlayState") or {}
+        if not isinstance(play_state, dict):
+            play_state = {}
+
+        user = (
+            session.get("UserName")
+            or session.get("UserId")
+            or session.get("DeviceName")
+            or "Unknown"
+        )
+        item_type = str(item.get("Type") or "")
+        series = item.get("SeriesName")
+        if item_type == "Episode" and series:
+            title = str(series)
+            subtitle = _episode_subtitle(item)
+        else:
+            title = str(item.get("Name") or "Untitled")
+            subtitle = None
+            year = item.get("ProductionYear")
+            if year:
+                subtitle = str(year)
+
+        progress = _ticks_to_display(play_state.get("PositionTicks"))
+        paused = bool(play_state.get("IsPaused"))
+        item_id = item.get("Id")
+        artwork_url = None
+        image_tags = item.get("ImageTags") or {}
+        if item_id and isinstance(image_tags, dict) and image_tags.get("Primary"):
+            artwork_url = f"/api/jellyfin/artwork/{item_id}"
+
+        rows.append(
+            PlaybackSession(
+                id=str(session.get("Id") or item_id or index),
+                user=str(user),
+                title=title,
+                subtitle=subtitle,
+                progress=progress,
+                paused=paused,
+                artwork_url=artwork_url,
+            )
+        )
+    return rows
+
+
+def summarize_sessions(sessions: Any) -> tuple[int, int]:
+    if not isinstance(sessions, list):
+        return 0, 0
+    playing = parse_active_playback(sessions)
+    user_ids: set[str] = set()
+    for session in sessions:
+        if not isinstance(session, dict):
+            continue
+        user_id = session.get("UserId") or session.get("UserName")
+        if user_id:
+            user_ids.add(str(user_id))
+    return len(playing), len(user_ids)
 
 
 class JellyfinAdapter(ServiceAdapter):
@@ -53,11 +159,15 @@ class JellyfinAdapter(ServiceAdapter):
         if self._api_key:
             headers["X-Emby-Token"] = self._api_key
 
+        now_playing: list[PlaybackSession] | None = None
+        streams: int | None = None
+        users: int | None = None
+        version = None
+
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout, headers=headers
             ) as client:
-                version = None
                 online = False
 
                 # Prefer authenticated system info when a key is present.
@@ -86,7 +196,6 @@ class JellyfinAdapter(ServiceAdapter):
                     if ping.status_code == 200:
                         online = True
                     else:
-                        # Some reverse proxies may not expose Ping; try root.
                         root = await client.get(self._base_url)
                         online = root.status_code < 500
 
@@ -104,13 +213,12 @@ class JellyfinAdapter(ServiceAdapter):
                         status_label="Unable to reach Jellyfin",
                     )
 
-                streams: int | None = None
-                users: int | None = None
                 if self._api_key:
                     sessions_resp = await client.get(f"{self._base_url}/Sessions")
                     if sessions_resp.status_code == 200:
                         sessions = sessions_resp.json()
-                        streams, users = self._summarize_sessions(sessions)
+                        now_playing = parse_active_playback(sessions)
+                        streams, users = summarize_sessions(sessions)
                     if version is None:
                         public = await client.get(
                             f"{self._base_url}/System/Info/Public"
@@ -141,7 +249,7 @@ class JellyfinAdapter(ServiceAdapter):
                 "streams",
                 "Active streams",
                 streams,
-                display=None if streams is None else f"{streams} active streams",
+                display=None if streams is None else f"{streams} streaming",
                 primary=True,
             ),
             metric(
@@ -156,7 +264,7 @@ class JellyfinAdapter(ServiceAdapter):
                 "Version",
                 version,
                 display=None if version is None else f"v{version}",
-                primary=True,
+                primary=now_playing is None,
             ),
         ]
         if not self._api_key:
@@ -170,49 +278,26 @@ class JellyfinAdapter(ServiceAdapter):
                 )
             )
 
+        if streams and streams > 0:
+            status_label = f"Online · {streams} streaming"
+        else:
+            status_label = "Online"
+
         return ServiceSnapshot(
             id=self.id,
             name=self.name,
             description=self.description,
             icon=self.icon,
             status=ServiceStatus.ONLINE,
-            status_label="Online",
+            status_label=status_label,
             metrics=metrics,
             version=version,
             url=self._base_url,
             href=self._base_url,
             open_label="Open Jellyfin",
+            now_playing=now_playing,
             last_updated=utcnow(),
             last_success_at=utcnow(),
             configured=True,
             error=None if self._api_key else "Streams require JELLYFIN_API_KEY",
         )
-
-    @staticmethod
-    def _summarize_sessions(sessions: Any) -> tuple[int, int]:
-        if not isinstance(sessions, list):
-            return 0, 0
-        active_streams = 0
-        user_ids: set[str] = set()
-        for session in sessions:
-            if not isinstance(session, dict):
-                continue
-            user_id = session.get("UserId") or session.get("UserName")
-            if user_id:
-                user_ids.add(str(user_id))
-            now_playing = session.get("NowPlayingItem")
-            is_playing = bool(
-                session.get("PlayState", {}).get("IsPaused") is False and now_playing
-            )
-            if now_playing or is_playing:
-                active_streams += 1
-            elif session.get("NowPlayingItem") is not None:
-                active_streams += 1
-        # Count sessions that have a NowPlayingItem as streams (includes paused).
-        if active_streams == 0:
-            active_streams = sum(
-                1
-                for s in sessions
-                if isinstance(s, dict) and s.get("NowPlayingItem") is not None
-            )
-        return active_streams, len(user_ids)

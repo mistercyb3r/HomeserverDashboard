@@ -6,6 +6,7 @@ import httpx
 
 from app.adapters.base import (
     ServiceAdapter,
+    format_uptime_seconds,
     metric,
     not_configured_snapshot,
     offline_snapshot,
@@ -62,13 +63,17 @@ class StarPulseAdapter(ServiceAdapter):
 
                 # Prefer /api/about when available for a richer summary.
                 about_version = None
+                about_uptime = None
                 try:
                     about = await client.get(f"{self._base_url}/api/about")
                     if about.status_code == 200:
-                        about_version = about.json().get("version")
+                        about_json = about.json()
+                        about_version = about_json.get("version")
+                        about_uptime = about_json.get("uptime_seconds")
                 except httpx.HTTPError:
                     about_version = None
                 version = about_version or version
+                uptime_display = format_uptime_seconds(about_uptime)
 
         except httpx.HTTPError as exc:
             return offline_snapshot(
@@ -127,6 +132,7 @@ class StarPulseAdapter(ServiceAdapter):
             status_label=status_label,
             metrics=metrics,
             version=version,
+            uptime=uptime_display,
             url=self._base_url,
             href=self._base_url,
             open_label="Open StarPulse",

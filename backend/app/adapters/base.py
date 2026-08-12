@@ -13,6 +13,26 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def format_uptime_seconds(seconds: float | int | None) -> str | None:
+    """Compact uptime like 4d 12h / 2h 8m. Returns None when unknown."""
+    if seconds is None:
+        return None
+    try:
+        total = int(seconds)
+    except (TypeError, ValueError):
+        return None
+    if total < 0:
+        return None
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
 def metric(
     key: str,
     label: str,

@@ -224,6 +224,7 @@ class StarlinkAdapter(ServiceAdapter):
             status_label=status_label,
             metrics=metrics,
             version=sample.get("software_version"),
+            uptime=uptime,
             url=self._starpulse_url,
             href=self._starpulse_url,
             open_label="Open StarPulse",

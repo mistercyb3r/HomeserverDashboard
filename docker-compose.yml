@@ -10,6 +10,7 @@ services:
       JELLYFIN_URL: ${JELLYFIN_URL:-}
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
       STARPULSE_URL: ${STARPULSE_URL:-}
+      PORTAINER_URL: ${PORTAINER_URL:-}
       DOCKER_SOCKET: ${DOCKER_SOCKET:-/var/run/docker.sock}
     volumes:
       - ./data:/data

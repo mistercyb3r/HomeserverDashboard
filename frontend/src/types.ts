@@ -7,6 +7,31 @@ export type ServiceStatus =
 
 export type SystemHealthLevel = "operational" | "attention" | "critical" | "unknown";
 
+export interface StorageMount {
+  mountpoint: string;
+  device: string | null;
+  fstype: string | null;
+  total_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  percent: number;
+  total_display: string;
+  used_display: string;
+  free_display: string;
+  summary: string;
+  tone: "good" | "warn" | "bad" | string;
+}
+
+export interface PlaybackSession {
+  id: string;
+  user: string;
+  title: string;
+  subtitle: string | null;
+  progress: string | null;
+  paused: boolean;
+  artwork_url: string | null;
+}
+
 export interface Metric {
   key: string;
   label: string;
@@ -27,9 +52,11 @@ export interface ServiceSnapshot {
   status_label: string;
   metrics: Metric[];
   version: string | null;
+  uptime: string | null;
   url: string | null;
   href: string | null;
   open_label: string | null;
+  now_playing: PlaybackSession[] | null;
   last_updated: string;
   last_success_at: string | null;
   configured: boolean;
@@ -64,6 +91,7 @@ export interface DashboardResponse {
   refresh_interval_seconds: number;
   system_health: SystemHealth;
   overview: OverviewMetric[];
+  storage: StorageMount[];
   services: ServiceSnapshot[];
   activity: ActivityItem[];
 }

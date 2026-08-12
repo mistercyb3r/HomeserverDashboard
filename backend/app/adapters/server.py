@@ -10,8 +10,9 @@ from typing import Any
 
 import psutil
 
-from app.adapters.base import ServiceAdapter, metric, utcnow
+from app.adapters.base import ServiceAdapter, format_uptime_seconds, metric, utcnow
 from app.schemas import Metric, ServiceSnapshot, ServiceStatus
+from app.storage import BAD_PERCENT, WARN_PERCENT, collect_storage_mounts
 
 _BOOT_TIME = psutil.boot_time()
 _NET_PREV: dict[str, Any] = {"ts": None, "bytes_sent": 0, "bytes_recv": 0}
@@ -27,18 +28,6 @@ def _format_bytes(num: float) -> str:
             return f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} PB"
-
-
-def _format_uptime(seconds: float) -> str:
-    total = int(seconds)
-    days, rem = divmod(total, 86400)
-    hours, rem = divmod(rem, 3600)
-    minutes, _ = divmod(rem, 60)
-    if days:
-        return f"{days}d {hours}h"
-    if hours:
-        return f"{hours}h {minutes}m"
-    return f"{minutes}m"
 
 
 def _format_rate(bytes_per_sec: float) -> str:
@@ -59,7 +48,6 @@ def _cpu_temp_c() -> float | None:
             values = [t.current for t in entries if t.current is not None]
             if values:
                 return round(sum(values) / len(values), 1)
-    # Fallback: first sensor pack with readings
     for entries in temps.values():
         values = [t.current for t in entries if t.current is not None]
         if values:
@@ -104,6 +92,10 @@ class ServerAdapter(ServiceAdapter):
         cpu = psutil.cpu_percent(interval=0.15)
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage(os.path.abspath(os.sep))
+        mounts = collect_storage_mounts()
+        worst_disk = max(
+            [disk.percent, *[m.percent for m in mounts]], default=disk.percent
+        )
         load: tuple[float, float, float] | None
         try:
             load = os.getloadavg()  # type: ignore[attr-defined]
@@ -112,6 +104,7 @@ class ServerAdapter(ServiceAdapter):
         temp = _cpu_temp_c()
         down, up = _network_rates()
         uptime_seconds = time.time() - _BOOT_TIME
+        uptime_display = format_uptime_seconds(uptime_seconds)
         hostname = socket.gethostname()
         os_name = f"{platform.system()} {platform.release()}"
         kernel = (
@@ -155,8 +148,8 @@ class ServerAdapter(ServiceAdapter):
                 "uptime",
                 "Uptime",
                 int(uptime_seconds),
-                display=_format_uptime(uptime_seconds),
-                primary=disk.percent < 85,
+                display=uptime_display,
+                primary=worst_disk < WARN_PERCENT,
             ),
             metric(
                 "temp",
@@ -194,9 +187,9 @@ class ServerAdapter(ServiceAdapter):
 
         status = ServiceStatus.ONLINE
         status_label = "Online"
-        if cpu >= 90 or mem.percent >= 92 or disk.percent >= 92:
+        if cpu >= 90 or mem.percent >= 92 or worst_disk >= BAD_PERCENT:
             status = ServiceStatus.DEGRADED
-            if disk.percent >= 92 and cpu < 90 and mem.percent < 92:
+            if worst_disk >= BAD_PERCENT and cpu < 90 and mem.percent < 92:
                 status_label = "Storage nearly full"
             else:
                 status_label = "High resource usage"
@@ -210,6 +203,7 @@ class ServerAdapter(ServiceAdapter):
             status_label=status_label,
             metrics=metrics,
             version=platform.platform(),
+            uptime=uptime_display,
             url=None,
             href=None,
             open_label=None,

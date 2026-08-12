@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from app import __version__
 from app.adapters.base import utcnow
+from app.adapters.jellyfin import JellyfinAdapter
 from app.adapters.registry import AdapterRegistry, build_registry
 from app.config import Settings, get_settings
 from app.config_store import ConfigStore
@@ -67,6 +70,51 @@ async def service_detail(
     if not entry.get("enabled", True):
         raise HTTPException(status_code=404, detail="Service disabled")
     return await adapter.fetch()
+
+
+@router.get("/jellyfin/artwork/{item_id}")
+async def jellyfin_artwork(
+    item_id: str,
+    settings: Settings = Depends(get_settings),
+    registry: AdapterRegistry = Depends(get_registry),
+) -> Response:
+    """Proxy Jellyfin primary artwork using the server-side API key."""
+    adapter = registry.get("jellyfin")
+    if not isinstance(adapter, JellyfinAdapter) or not adapter.is_configured():
+        raise HTTPException(status_code=404, detail="Jellyfin not configured")
+    if not settings.jellyfin_api_key:
+        raise HTTPException(status_code=404, detail="Artwork unavailable")
+
+    # Basic path-safety: Jellyfin item IDs are hex/guid-like.
+    cleaned = item_id.strip()
+    if not cleaned or any(ch in cleaned for ch in "/\\?.#"):
+        raise HTTPException(status_code=400, detail="Invalid item id")
+
+    base = adapter.open_url()
+    if not base:
+        raise HTTPException(status_code=404, detail="Jellyfin not configured")
+
+    url = f"{base}/Items/{cleaned}/Images/Primary"
+    headers = {"X-Emby-Token": settings.jellyfin_api_key}
+    try:
+        async with httpx.AsyncClient(
+            timeout=settings.http_timeout_seconds, headers=headers
+        ) as client:
+            upstream = await client.get(
+                url, params={"maxHeight": 96, "maxWidth": 64, "quality": 80}
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="Artwork fetch failed") from exc
+
+    if upstream.status_code >= 400:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+
+    media_type = upstream.headers.get("content-type", "image/jpeg")
+    return StreamingResponse(
+        iter([upstream.content]),
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.get("/docker", response_model=DockerDetailResponse)

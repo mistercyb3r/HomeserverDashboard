@@ -24,16 +24,25 @@ def test_dashboard_includes_server(client):
     payload = response.json()
     assert "system_health" in payload
     assert "overview" in payload
+    assert "storage" in payload
+    assert isinstance(payload["storage"], list)
     ids = [s["id"] for s in payload["services"]]
     assert "server" in ids
     server = next(s for s in payload["services"] if s["id"] == "server")
     assert server["status"] in {"online", "degraded"}
+    assert server.get("uptime")
     assert server["metrics"]
     for m in server["metrics"]:
         assert "last_updated" not in m
         assert "available" in m
         if not m["available"]:
             assert m["display"] in {"Unavailable", "Not configured"}
+    if payload["storage"]:
+        mount = payload["storage"][0]
+        assert "mountpoint" in mount
+        assert "percent" in mount
+        assert "free_display" in mount
+        assert "summary" in mount
 
 
 def test_settings_lists_future_services(client):
@@ -43,10 +52,13 @@ def test_settings_lists_future_services(client):
     ids = {s["id"] for s in payload["services"]}
     assert "jellyfin" in ids
     assert "docker" in ids
+    assert "portainer" in ids
     assert "immich" in ids
     docker = next(s for s in payload["services"] if s["id"] == "docker")
     assert docker["implemented"] is True
     assert docker["config_kind"] == "socket"
+    portainer = next(s for s in payload["services"] if s["id"] == "portainer")
+    assert portainer["implemented"] is True
     immich = next(s for s in payload["services"] if s["id"] == "immich")
     assert immich["implemented"] is False
     assert immich["enabled"] is False
@@ -184,7 +196,10 @@ async def test_starpulse_adapter_parses_health(httpx_mock=None):
 
     about_response = MagicMock()
     about_response.status_code = 200
-    about_response.json.return_value = {"version": "1.0.0"}
+    about_response.json.return_value = {
+        "version": "1.0.0",
+        "uptime_seconds": 187200,
+    }
 
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(side_effect=[mock_response, about_response])
@@ -197,6 +212,8 @@ async def test_starpulse_adapter_parses_health(httpx_mock=None):
 
     assert snap.status == ServiceStatus.ONLINE
     assert snap.version == "1.0.0"
+    assert snap.uptime == "2d 4h"
+    assert snap.href == "http://starpulse.local:8000"
     starlink_metric = next(m for m in snap.metrics if m.key == "starlink")
     assert starlink_metric.available is True
     assert "connected" in starlink_metric.display.lower()

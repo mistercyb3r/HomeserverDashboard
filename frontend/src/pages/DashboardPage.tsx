@@ -5,6 +5,7 @@ import { Header } from "../components/Header";
 import { HeroOverview } from "../components/HeroOverview";
 import { RecentActivity } from "../components/RecentActivity";
 import { ServiceCard } from "../components/ServiceCard";
+import { StorageSection } from "../components/StorageSection";
 
 const DEFAULT_REFRESH_MS = 10_000;
 const HISTORY_LENGTH = 24;
@@ -116,6 +117,10 @@ export function DashboardPage() {
 
             <div className="mt-4 sm:mt-5">
               <RecentActivity items={data.activity ?? []} />
+            </div>
+
+            <div className="mt-5 sm:mt-6">
+              <StorageSection mounts={data.storage ?? []} />
             </div>
 
             <section className="px-4 py-6 sm:px-6 sm:py-7 lg:px-8">

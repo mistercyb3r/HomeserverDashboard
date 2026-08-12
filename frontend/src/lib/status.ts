@@ -22,6 +22,8 @@ export function emptyStateCopy(serviceId: string, error: string | null): string 
       return "Configure StarPulse to show live Starlink status.";
     case "docker":
       return "Docker socket has not been enabled.";
+    case "portainer":
+      return "Add a Portainer URL in Settings to enable this card.";
     default:
       return error || "This service has not been configured yet.";
   }

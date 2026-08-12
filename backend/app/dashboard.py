@@ -16,6 +16,7 @@ from app.schemas import (
     SystemHealth,
     SystemHealthLevel,
 )
+from app.storage import collect_storage_mounts
 
 
 def compute_system_health(services: list[ServiceSnapshot]) -> SystemHealth:
@@ -247,12 +248,18 @@ async def collect_dashboard(
     order = {adapter.id: index for index, adapter in enumerate(adapters)}
     snapshots.sort(key=lambda s: order.get(s.id, 999))
 
+    try:
+        storage = collect_storage_mounts()
+    except Exception:  # noqa: BLE001
+        storage = []
+
     return DashboardResponse(
         server_name=server_name,
         generated_at=utcnow(),
         refresh_interval_seconds=int(config.get("refresh_interval_seconds") or 10),
         system_health=compute_system_health(snapshots),
         overview=build_overview(snapshots),
+        storage=storage,
         services=snapshots,
         activity=build_activity(snapshots),
     )

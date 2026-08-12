@@ -37,6 +37,18 @@ class Metric(BaseModel):
     detail: str | None = None
 
 
+class PlaybackSession(BaseModel):
+    """Safe Jellyfin now-playing row for the dashboard card."""
+
+    id: str
+    user: str
+    title: str
+    subtitle: str | None = None
+    progress: str | None = None
+    paused: bool = False
+    artwork_url: str | None = None
+
+
 class ServiceSnapshot(BaseModel):
     """Normalized snapshot produced by any ServiceAdapter."""
 
@@ -48,13 +60,32 @@ class ServiceSnapshot(BaseModel):
     status_label: str
     metrics: list[Metric] = Field(default_factory=list)
     version: str | None = None
+    uptime: str | None = None
     url: str | None = None
     href: str | None = None
     open_label: str | None = None
+    now_playing: list[PlaybackSession] | None = None
     last_updated: datetime
     last_success_at: datetime | None = None
     configured: bool = True
     error: str | None = None
+
+
+class StorageMount(BaseModel):
+    """One real mounted filesystem (never folder-size scans)."""
+
+    mountpoint: str
+    device: str | None = None
+    fstype: str | None = None
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    percent: float
+    total_display: str
+    used_display: str
+    free_display: str
+    summary: str
+    tone: str = "good"  # good | warn | bad
 
 
 class OverviewMetric(BaseModel):
@@ -92,6 +123,7 @@ class DashboardResponse(BaseModel):
     refresh_interval_seconds: int = 10
     system_health: SystemHealth
     overview: list[OverviewMetric]
+    storage: list[StorageMount] = Field(default_factory=list)
     services: list[ServiceSnapshot]
     activity: list[ActivityItem] = Field(default_factory=list)
 

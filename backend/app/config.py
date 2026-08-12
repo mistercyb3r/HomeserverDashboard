@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     jellyfin_url: str | None = Field(default=None)
     jellyfin_api_key: str | None = Field(default=None)
     starpulse_url: str | None = Field(default=None)
+    portainer_url: str | None = Field(default=None)
     docker_socket: str | None = Field(default=None)
 
     http_timeout_seconds: float = Field(default=5.0)
