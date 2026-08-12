@@ -3,7 +3,8 @@ services:
     build: .
     container_name: homeserver-dashboard
     ports:
-      - "8080:8080"
+      # Host port must NOT collide with StarPulse/other apps (8080 is often taken).
+      - "${DASHBOARD_PORT:-8787}:8080"
     environment:
       DATA_DIR: /data
       SERVER_NAME: ${SERVER_NAME:-Home Server}
